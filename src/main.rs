@@ -20,7 +20,7 @@ struct WikipediaSummary {
 
 impl fmt::Display for WikipediaSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\x1b[1m\x1b[4m{}\x1b[0mi: {} \n\n {}", self.title, self.summary, self.url)
+        write!(f, "\x1b[1m\x1b[4m{}\x1b[0m: {} \n\n {}", self.title, self.summary, self.url)
     }
 }
 
