@@ -8,10 +8,27 @@
 // [x] 3. print it.
 
 use reqwest::Url;
-use std::env;
+use std::{env, fmt};
+
+
+#[derive(Debug)]
+struct WikipediaSummary {
+    title: String,
+    summary: String,
+    url: String,
+}
+
+impl fmt::Display for WikipediaSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\x1b[1m\x1b[4m{}\x1b[0mi: {} \n\n {}", self.title, self.summary, self.url)
+    }
+}
 
 fn main() {
-    if let Some(word) = env::args().nth(1) {
+    let args: Vec<String> = env::args().skip(1).collect();
+
+    if args.len() > 0 {
+        let word = args.join("_");
         wikipedia(&word);
     } else {
         println!("Usage: explain <concept you want explained>");
@@ -19,16 +36,42 @@ fn main() {
     
 }
 
-fn wikipedia(word: &str) {
+fn wikipedia(query: &str) {
+
+    let title = get_wikipedia_title(query);
+    let summary = get_wikipedia_summary(&title);
+
+    println!("{}", summary);
+}
+
+fn get_wikipedia_title(query: &str) -> String {
+    let url_string = format!("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={}&utf8=&format=json", query);
+
+    let resp = reqwest::blocking::get(&url_string).unwrap();
+    assert!(resp.status().is_success());
+
+    let json: serde_json::Value = resp.json().unwrap();
+   
+    json["query"]["search"][0]["title"].as_str().unwrap().to_string()
+}
+
+
+fn get_wikipedia_summary(title: &str) -> WikipediaSummary {
+    let underscore_title = title.replace(" ", "_");
+        
     let mut url = Url::parse("https://en.wikipedia.org/api/rest_v1/page/summary").unwrap();
-    url.path_segments_mut().unwrap().push(word); 
+    url.path_segments_mut().unwrap().push(&underscore_title); 
 
     let resp = reqwest::blocking::get(url).unwrap();
     assert!(resp.status().is_success());
 
     let json: serde_json::Value = resp.json().unwrap();
     
-//    println!("{}\n", json.get("extract").unwrap().as_str().unwrap());
-    println!("{}\n", json["description"].as_str().unwrap());
-    println!("{}", json["content_urls"]["desktop"]["page"].as_str().unwrap())
+    WikipediaSummary {
+        title: title.to_string(),
+        summary: json["description"].as_str().unwrap().to_string(),
+        url: json["content_urls"]["desktop"]["page"].as_str().unwrap().to_string(),
+    }
+    
 }
+
