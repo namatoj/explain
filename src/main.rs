@@ -66,10 +66,17 @@ fn get_wikipedia_summary(title: &str) -> WikipediaSummary {
     assert!(resp.status().is_success());
 
     let json: serde_json::Value = resp.json().unwrap();
-    
+   
+    let summary;
+    match json["description"].as_str() {
+        Some(value) => summary = value.to_string(),
+        None => summary = json["extract"].as_str().unwrap().to_string()
+    }
+
+
     WikipediaSummary {
         title: title.to_string(),
-        summary: json["description"].as_str().unwrap().to_string(),
+        summary, 
         url: json["content_urls"]["desktop"]["page"].as_str().unwrap().to_string(),
     }
     
