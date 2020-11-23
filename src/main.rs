@@ -1,12 +1,3 @@
-// Goal: CLI application
-// call it with:
-// % explain <word>
-// and the output will be an explanation of the word.
-
-// [x] 1. get our word from the command line
-// [x] 2. find and extract the summary from the API response
-// [x] 3. print it.
-
 use reqwest::Url;
 use std::fmt;
 use structopt::StructOpt;
@@ -84,7 +75,6 @@ fn get_wikipedia_summary(title: &str, long_summary: bool) -> WikipediaSummary {
 
     let json: serde_json::Value = resp.json().unwrap();
 
-    println!("{:?}", long_summary);
     let summary = if long_summary || json["description"].is_null() {
         json["extract"].as_str().unwrap().to_string()
     } else {
