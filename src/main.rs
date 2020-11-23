@@ -8,13 +8,24 @@
 // [x] 3. print it.
 
 use reqwest::Url;
-use std::{env, fmt};
+use std::fmt;
+use structopt::StructOpt;
 
 #[derive(Debug)]
 struct WikipediaSummary {
     title: String,
     summary: String,
     url: String,
+}
+
+#[derive(StructOpt, Debug)]
+#[structopt(name = "basic")]
+struct Opt {
+    #[structopt(short, long, help = "flag for a more verbose explanation.")]
+    more: bool,
+
+    #[structopt(help = "the query to be explained")]
+    query: Vec<String>,
 }
 
 impl fmt::Display for WikipediaSummary {
@@ -28,19 +39,19 @@ impl fmt::Display for WikipediaSummary {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
+    let opt = Opt::from_args();
 
-    if !args.is_empty() {
-        let word = args.join("_");
-        wikipedia(&word);
+    if !opt.query.is_empty() {
+        let word = opt.query.join("_");
+        wikipedia(&word, opt.more);
     } else {
         println!("Usage: explain <concept you want explained>");
     }
 }
 
-fn wikipedia(query: &str) {
+fn wikipedia(query: &str, long_summary: bool) {
     let title = get_wikipedia_title(query);
-    let summary = get_wikipedia_summary(&title);
+    let summary = get_wikipedia_summary(&title, long_summary);
 
     println!("{}", summary);
 }
@@ -62,7 +73,7 @@ fn get_wikipedia_title(query: &str) -> String {
         .to_string()
 }
 
-fn get_wikipedia_summary(title: &str) -> WikipediaSummary {
+fn get_wikipedia_summary(title: &str, long_summary: bool) -> WikipediaSummary {
     let underscore_title = title.replace(" ", "_");
 
     let mut url = Url::parse("https://en.wikipedia.org/api/rest_v1/page/summary").unwrap();
@@ -73,11 +84,12 @@ fn get_wikipedia_summary(title: &str) -> WikipediaSummary {
 
     let json: serde_json::Value = resp.json().unwrap();
 
-    let summary;
-    match json["description"].as_str() {
-        Some(value) => summary = value.to_string(),
-        None => summary = json["extract"].as_str().unwrap().to_string(),
-    }
+    println!("{:?}", long_summary);
+    let summary = if long_summary || json["description"].is_null() {
+        json["extract"].as_str().unwrap().to_string()
+    } else {
+        json["description"].as_str().unwrap().to_string()
+    };
 
     WikipediaSummary {
         title: title.to_string(),
