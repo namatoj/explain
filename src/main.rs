@@ -1,4 +1,5 @@
-use reqwest::Url;
+use std::convert::From;
+use std::error::Error as ErrorTrait;
 use std::fmt;
 use structopt::StructOpt;
 
@@ -7,6 +8,33 @@ struct WikipediaSummary {
     title: String,
     summary: String,
     url: String,
+}
+
+#[derive(Debug)]
+enum Error {
+    ArticleNotFound,
+    UnsuccessfulResponse,
+    UrlError,
+    ParseError,
+}
+
+impl ErrorTrait for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Error::ArticleNotFound => write!(f, "Article not found."),
+            Error::UnsuccessfulResponse => write!(f, "Unsuccessful response."),
+            Error::UrlError => write!(f, "Url error, can't reach the resource."),
+            Error::ParseError => write!(f, "Parse error, couldn't parse url."),
+        }
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(_err: reqwest::Error) -> Self {
+        Error::UrlError
+    }
 }
 
 #[derive(StructOpt, Debug)]
@@ -34,59 +62,77 @@ fn main() {
 
     if !opt.query.is_empty() {
         let word = opt.query.join("_");
-        wikipedia(&word, opt.more);
+        match wikipedia(&word, opt.more) {
+            Ok(_) => {}
+            Err(e) => println!("{}", e),
+        }
     } else {
         println!("Usage: explain <concept you want explained>");
     }
 }
 
-fn wikipedia(query: &str, long_summary: bool) {
-    let title = get_wikipedia_title(query);
-    let summary = get_wikipedia_summary(&title, long_summary);
+fn wikipedia(query: &str, long_summary: bool) -> Result<(), Error> {
+    let title = get_wikipedia_title(query)?;
+    let summary = get_wikipedia_summary(&title, long_summary)?;
 
     println!("{}", summary);
+
+    Ok(())
 }
 
-fn get_wikipedia_title(query: &str) -> String {
+fn get_wikipedia_title(query: &str) -> Result<String, Error> {
     let url_string = format!(
         "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={}&utf8=&format=json",
         query
     );
 
-    let resp = reqwest::blocking::get(&url_string).unwrap();
-    assert!(resp.status().is_success());
+    let resp = reqwest::blocking::get(&url_string)?;
 
-    let json: serde_json::Value = resp.json().unwrap();
+    if !resp.status().is_success() {
+        return Err(Error::UnsuccessfulResponse);
+    }
 
-    json["query"]["search"][0]["title"]
+    let json: serde_json::Value = resp.json()?;
+
+    Ok(json["query"]["search"][0]["title"]
         .as_str()
-        .unwrap()
-        .to_string()
+        .ok_or_else(|| Error::ArticleNotFound)?
+        .to_string())
 }
 
-fn get_wikipedia_summary(title: &str, long_summary: bool) -> WikipediaSummary {
+fn get_wikipedia_summary(title: &str, long_summary: bool) -> Result<WikipediaSummary, Error> {
     let underscore_title = title.replace(" ", "_");
 
-    let mut url = Url::parse("https://en.wikipedia.org/api/rest_v1/page/summary").unwrap();
-    url.path_segments_mut().unwrap().push(&underscore_title);
+    let url = format!(
+        "https://en.wikipedia.org/api/rest_v1/page/summary/{}",
+        underscore_title
+    );
 
-    let resp = reqwest::blocking::get(url).unwrap();
+    let resp = reqwest::blocking::get(&url)?;
     assert!(resp.status().is_success());
 
-    let json: serde_json::Value = resp.json().unwrap();
+    let json: serde_json::Value = resp.json()?;
 
     let summary = if long_summary || json["description"].is_null() {
-        json["extract"].as_str().unwrap().to_string()
+        json["extract"]
+            .as_str()
+            .ok_or_else(|| Error::ParseError)?
+            .to_string()
     } else {
-        json["description"].as_str().unwrap().to_string()
+        json["description"]
+            .as_str()
+            .ok_or_else(|| Error::ParseError)?
+            .to_string()
     };
 
-    WikipediaSummary {
+    let url = json["content_urls"]["desktop"]["page"]
+        .as_str()
+        .ok_or_else(|| Error::ParseError)?
+        .to_string();
+
+    Ok(WikipediaSummary {
         title: title.to_string(),
         summary,
-        url: json["content_urls"]["desktop"]["page"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-    }
+        url,
+    })
 }
